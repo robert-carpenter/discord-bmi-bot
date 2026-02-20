@@ -1,16 +1,14 @@
-const {
+import {
+  ApplicationCommandOptionType,
   Client,
   Events,
   GatewayIntentBits,
   REST,
   Routes,
-  ApplicationCommandOptionType,
-} = require('discord.js');
-const { loadConfig } = require('./config');
-const { StateStore } = require('./stateStore');
-
-const config = loadConfig();
-const state = new StateStore(config.dataFile);
+} from 'discord.js';
+import { AppDataSource } from './data-source';
+import { UserBmi } from './entity/UserBmi';
+import { config } from './config';
 
 const slashCommands = [
   {
@@ -81,8 +79,10 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds],
 });
 
+let bmiRepo: ReturnType<typeof AppDataSource.getRepository<UserBmi>>;
+
 client.once(Events.ClientReady, () => {
-  console.log(`BMI bot ready as ${client.user.tag}`);
+  console.log(`BMI bot ready as ${client.user?.tag}`);
   registerSlashCommands().catch((err) => {
     console.error('Failed to register slash commands:', err);
   });
@@ -90,15 +90,30 @@ client.once(Events.ClientReady, () => {
 
 client.on(Events.InteractionCreate, handleInteractionCreate);
 
-client.login(config.token);
+async function bootstrap() {
+  try {
+    await AppDataSource.initialize();
+    bmiRepo = AppDataSource.getRepository(UserBmi);
+  } catch (err) {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
+  }
+
+  await client.login(config.token);
+}
+
+bootstrap().catch((err) => {
+  console.error('Failed to start bot:', err);
+  process.exit(1);
+});
 
 async function registerSlashCommands() {
   const rest = new REST({ version: '10' }).setToken(config.token);
-  await rest.put(Routes.applicationCommands(client.user.id), { body: slashCommands });
+  await rest.put(Routes.applicationCommands(client.user!.id), { body: slashCommands });
   console.log('Slash commands registered globally.');
 }
 
-async function handleInteractionCreate(interaction) {
+async function handleInteractionCreate(interaction: any) {
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== 'bmi') return;
   if (!interaction.guildId) {
@@ -123,7 +138,7 @@ async function handleInteractionCreate(interaction) {
   }
 }
 
-async function handleSetBmi(interaction) {
+async function handleSetBmi(interaction: any) {
   const heightCm = interaction.options.getInteger('height_cm');
   const weightKg = interaction.options.getInteger('weight_kg');
   const heightStr = interaction.options.getString('height');
@@ -136,11 +151,12 @@ async function handleSetBmi(interaction) {
   }
 
   const bmi = computeBmi(parsed.heightCm, parsed.weightKg);
-  const saved = state.setUserBmi(interaction.user.id, {
+  const saved = await bmiRepo.save({
+    userId: interaction.user.id,
     heightCm: parsed.heightCm,
     weightKg: parsed.weightKg,
     bmi,
-    updatedAt: Date.now(),
+    updatedAt: new Date(),
   });
 
   await interaction.reply({
@@ -149,9 +165,9 @@ async function handleSetBmi(interaction) {
   });
 }
 
-async function handleShowBmi(interaction) {
+async function handleShowBmi(interaction: any) {
   const target = interaction.options.getUser('user') || interaction.user;
-  const data = state.getUserBmi(target.id);
+  const data = await bmiRepo.findOneBy({ userId: target.id });
 
   if (!data) {
     await interaction.reply({
@@ -165,13 +181,13 @@ async function handleShowBmi(interaction) {
   }
 
   await interaction.reply({
-    content: `${target.tag}'s BMI is ${formatBmi(data.bmi)}.`,
+    content: `${target.tag}'s BMI is ${formatBmi(data.bmi)} (Height: ${formatHeightCm(data.heightCm)}, Weight: ${formatWeightKg(data.weightKg)}).`,
     ephemeral: false,
   });
 }
 
-async function handleAnnounceBmi(interaction) {
-  const data = state.getUserBmi(interaction.user.id);
+async function handleAnnounceBmi(interaction: any) {
+  const data = await bmiRepo.findOneBy({ userId: interaction.user.id });
 
   if (!data) {
     await interaction.reply({
@@ -182,25 +198,35 @@ async function handleAnnounceBmi(interaction) {
   }
 
   await interaction.reply({
-    content: `${interaction.user.tag}'s BMI is ${formatBmi(data.bmi)}.`,
+    content: `${interaction.user.tag} announces their BMI: ${formatBmi(data.bmi)} (Height: ${formatHeightCm(data.heightCm)}, Weight: ${formatWeightKg(data.weightKg)}).`,
     ephemeral: false,
   });
 }
 
-function parseBmiInput({ heightCm, weightKg, heightStr, weightLbs }) {
+function parseBmiInput({
+  heightCm,
+  weightKg,
+  heightStr,
+  weightLbs,
+}: {
+  heightCm: number | null;
+  weightKg: number | null;
+  heightStr: string | null;
+  weightLbs: number | null;
+}) {
   if (Number.isFinite(heightCm) && Number.isFinite(weightKg)) {
-    if (!isReasonableMetric(heightCm, weightKg)) {
+    if (!isReasonableMetric(heightCm!, weightKg!)) {
       return { ok: false, error: 'Height or weight looks out of range. Please check your inputs.' };
     }
-    return { ok: true, heightCm, weightKg };
+    return { ok: true, heightCm: heightCm!, weightKg: weightKg! };
   }
 
   if (heightStr && Number.isFinite(weightLbs)) {
     const parsedHeightCm = parseHeightStringToCm(heightStr);
     if (!parsedHeightCm) {
-      return { ok: false, error: 'Could not parse height. Try formats like 5ft9, 5\'9, or 175cm.' };
+      return { ok: false, error: "Could not parse height. Try formats like 5ft9, 5'9, or 175cm." };
     }
-    const parsedWeightKg = poundsToKg(weightLbs);
+    const parsedWeightKg = poundsToKg(weightLbs!);
     if (!isReasonableMetric(parsedHeightCm, parsedWeightKg)) {
       return { ok: false, error: 'Height or weight looks out of range. Please check your inputs.' };
     }
@@ -213,8 +239,7 @@ function parseBmiInput({ heightCm, weightKg, heightStr, weightLbs }) {
   };
 }
 
-function parseHeightStringToCm(input) {
-  if (!input) return null;
+function parseHeightStringToCm(input: string) {
   const raw = input.trim().toLowerCase();
   if (!raw) return null;
 
@@ -254,33 +279,33 @@ function parseHeightStringToCm(input) {
   return null;
 }
 
-function feetInchesToCm(feet, inches) {
+function feetInchesToCm(feet: number, inches: number) {
   if (!Number.isFinite(feet) || !Number.isFinite(inches)) return null;
   if (feet < 3 || feet > 8 || inches < 0 || inches > 11) return null;
   return (feet * 12 + inches) * 2.54;
 }
 
-function poundsToKg(pounds) {
+function poundsToKg(pounds: number) {
   return pounds * 0.45359237;
 }
 
-function computeBmi(heightCm, weightKg) {
+function computeBmi(heightCm: number, weightKg: number) {
   const meters = heightCm / 100;
   return weightKg / (meters * meters);
 }
 
-function formatBmi(bmi) {
+function formatBmi(bmi: number) {
   return bmi.toFixed(1);
 }
 
-function formatHeightCm(cm) {
+function formatHeightCm(cm: number) {
   return `${Math.round(cm)} cm`;
 }
 
-function formatWeightKg(kg) {
+function formatWeightKg(kg: number) {
   return `${Math.round(kg * 10) / 10} kg`;
 }
 
-function isReasonableMetric(heightCm, weightKg) {
+function isReasonableMetric(heightCm: number, weightKg: number) {
   return heightCm >= 50 && heightCm <= 300 && weightKg >= 20 && weightKg <= 500;
 }

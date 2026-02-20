@@ -10,11 +10,10 @@ Tracks user BMI and allows setting, showing, and announcing BMI via slash comman
 1) Copy config examples and fill in your values:
    ```bash
    cp .env.example .env
-   cp config.example.json config.json
    ```
-   - `DISCORD_TOKEN` / `token`: Bot token
-   - `COMMAND_PREFIX` / `commandPrefix`: Optional (not used by slash commands)
-   - `DATA_FILE`: Optional (defaults to `data/state.json`)
+   - `DISCORD_TOKEN`: Bot token
+   - `DATABASE_URL`: Postgres connection string
+   - `COMMAND_PREFIX`: Optional (not used by slash commands)
 
 2) Install dependencies:
    ```bash
@@ -26,7 +25,7 @@ Tracks user BMI and allows setting, showing, and announcing BMI via slash comman
    npm start
    ```
 
-State is stored in `data/state.json` by default.
+State is stored in Postgres.
 
 ## Commands
 Slash:
@@ -40,5 +39,5 @@ Notes:
 - Height string examples: `5ft9`, `5'9`, `6ft`, `175cm`.
 
 ## How it works
-- The bot stores height/weight per user globally in `data/state.json`.
+- The bot stores height/weight per user globally in Postgres.
 - BMI is computed as `kg / (m^2)` and shown to one decimal place.

@@ -5,12 +5,15 @@ WORKDIR /app
 
 # Install dependencies first (better cache)
 COPY package*.json ./
-RUN npm install --only=production
+RUN npm install
 
 # Copy source
 COPY src ./src
+COPY tsconfig.json ./
 COPY config.example.json ./
 COPY .env.example ./
 
-# Runtime config/state is provided via env/config.json; data directory is persisted externally if desired.
+# Build TypeScript and remove dev deps
+RUN npm run build && npm prune --omit=dev
+
 CMD ["npm", "start"]

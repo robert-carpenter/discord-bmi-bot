@@ -1,5 +1,4 @@
 {
   "token": "YOUR_BOT_TOKEN",
-  "commandPrefix": "!bmi",
-  "dataFile": "data/state.json"
+  "commandPrefix": "!bmi"
 }
