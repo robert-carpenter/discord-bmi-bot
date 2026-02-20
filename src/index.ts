@@ -181,7 +181,7 @@ async function handleShowBmi(interaction: any) {
   }
 
   await interaction.reply({
-    content: `${target.tag}'s BMI is ${formatBmi(data.bmi)} (Height: ${formatHeightCm(data.heightCm)}, Weight: ${formatWeightKg(data.weightKg)}).`,
+    content: `${target.tag}'s BMI is ${formatBmi(data.bmi)}.`,
     ephemeral: false,
   });
 }
@@ -198,7 +198,7 @@ async function handleAnnounceBmi(interaction: any) {
   }
 
   await interaction.reply({
-    content: `${interaction.user.tag} announces their BMI: ${formatBmi(data.bmi)} (Height: ${formatHeightCm(data.heightCm)}, Weight: ${formatWeightKg(data.weightKg)}).`,
+    content: `${interaction.user.tag}'s BMI is ${formatBmi(data.bmi)}.`,
     ephemeral: false,
   });
 }
