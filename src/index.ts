@@ -203,6 +203,10 @@ async function handleAnnounceBmi(interaction: any) {
   });
 }
 
+type ParsedBmi =
+  | { ok: false; error: string }
+  | { ok: true; heightCm: number; weightKg: number };
+
 function parseBmiInput({
   heightCm,
   weightKg,
@@ -213,7 +217,7 @@ function parseBmiInput({
   weightKg: number | null;
   heightStr: string | null;
   weightLbs: number | null;
-}) {
+}): ParsedBmi {
   if (Number.isFinite(heightCm) && Number.isFinite(weightKg)) {
     if (!isReasonableMetric(heightCm!, weightKg!)) {
       return { ok: false, error: 'Height or weight looks out of range. Please check your inputs.' };
